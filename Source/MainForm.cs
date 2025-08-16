@@ -11,34 +11,36 @@ namespace PrepareNewMod.Source
 {
     public class MainForm : Form
     {
-        private TextBox txtTemplateRoot;
-        private Button btnBrowseTemplateRoot;
+        private readonly TextBox txtTemplateRoot;
+        private readonly Button btnBrowseTemplateRoot;
 
-        private TextBox txtDestBase;
-        private Button btnBrowseDestBase;
+        private readonly TextBox txtDestBase;
+        private readonly Button btnBrowseDestBase;
 
-        private TextBox txtModName;
-        private TextBox txtPkgPrefix;
+        private readonly TextBox txtModName;
+        private readonly TextBox txtPkgPrefix;
 
-        private CheckBox chkIncludeGit;
-        private CheckBox chkOpenWhenDone;
+        private readonly CheckBox chkIncludeGit;
+        private readonly CheckBox chkOpenWhenDone;
 
-        private Button btnDryRun;
-        private Button btnRun;
-        private Button btnCopyLog;
+        private readonly Button btnDryRun;
+        private readonly Button btnRun;
+        private readonly Button btnCopyLog;
 
         // Console-like log
-        private TextBox logBox;
+        private readonly TextBox logBox;
 
         public MainForm()
         {
             Text = "Prepare New Mod (from ModTemplate)";
-            Width = 960;
-            Height = 600;
-            FormBorderStyle = FormBorderStyle.Sizable;
-            MaximizeBox = true;
-            MinimumSize = new Size(880, 520);
             StartPosition = FormStartPosition.CenterScreen;
+
+            // DPI-friendly
+            AutoScaleMode = AutoScaleMode.Dpi;
+            AutoScaleDimensions = new SizeF(96f, 96f);
+            MinimumSize = new Size(880, 540);
+            Size = new Size(980, 600);
+            Padding = new Padding(12);
 
             // --- Defaults based on EXE location ---
             var exeDir = AppPaths.ExeDir;
@@ -58,111 +60,132 @@ namespace PrepareNewMod.Source
             }
             catch { destDefault = exeParent; }
 
-            // Layout constants
-            int leftLabel = 12, leftBox = 220, widthBox = 660, row = 18, vstep = 36;
+            // ===== Root layout: 2 rows (controls / log) =====
+            var root = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 2
+            };
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            Controls.Add(root);
 
-            // Template root
-            var lblTemplateRoot = new Label { Left = leftLabel, Top = row, Width = 200, Text = "Template root (source):" };
-            txtTemplateRoot = new TextBox
+            // ===== Top grid: labels, fields, browse buttons =====
+            var grid = new TableLayoutPanel
             {
-                Left = leftBox,
-                Top = row - 4,
-                Width = widthBox,
-                Text = exeDir,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                ColumnCount = 3,
+                Padding = new Padding(0, 0, 0, 6)
             };
-            btnBrowseTemplateRoot = new Button
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200f));   // labels
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));    // text boxes stretch
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90f));    // browse button
+            root.Controls.Add(grid, 0, 0);
+
+            // helpers
+            static Label L(string t) => new()
             {
-                Left = leftBox + widthBox + 8,
-                Top = row - 6,
-                Width = 80,
-                Text = "Browse",
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Text = t,
+                AutoSize = true,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(0, 6, 8, 6)
             };
+            static TextBox T(string text = "", string ph = "")
+            {
+                var tb = new TextBox
+                {
+                    Text = text,
+                    Anchor = AnchorStyles.Left | AnchorStyles.Right,
+                    Margin = new Padding(0, 3, 8, 3)
+                };
+                try { tb.PlaceholderText = ph; } catch { /* older WinForms? ignore */ }
+                return tb;
+            }
+            static Button B(string t) => new()
+            {
+                Text = t,
+                Anchor = AnchorStyles.Right,
+                Margin = new Padding(0, 3, 0, 3),
+                AutoSize = true
+            };
+
+            // Row 0: Template root
+            grid.Controls.Add(L("Template root (source):"), 0, 0);
+            txtTemplateRoot = T(exeDir);
+            grid.Controls.Add(txtTemplateRoot, 1, 0);
+            btnBrowseTemplateRoot = B("Browse");
             btnBrowseTemplateRoot.Click += (_, __) => BrowseFolderInto(txtTemplateRoot);
-            row += vstep;
+            grid.Controls.Add(btnBrowseTemplateRoot, 2, 0);
 
-            // Destination base
-            var lblDestBase = new Label { Left = leftLabel, Top = row, Width = 200, Text = "Destination base folder:" };
-            txtDestBase = new TextBox
-            {
-                Left = leftBox,
-                Top = row - 4,
-                Width = widthBox,
-                Text = destDefault,
-                PlaceholderText = @"e.g., F:\Source",
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
-            btnBrowseDestBase = new Button
-            {
-                Left = leftBox + widthBox + 8,
-                Top = row - 6,
-                Width = 80,
-                Text = "Browse",
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
+            // Row 1: Destination base
+            grid.Controls.Add(L("Destination base folder:"), 0, 1);
+            txtDestBase = T(destDefault, @"e.g., F:\Source");
+            grid.Controls.Add(txtDestBase, 1, 1);
+            btnBrowseDestBase = B("Browse");
             btnBrowseDestBase.Click += (_, __) => BrowseFolderInto(txtDestBase);
-            row += vstep;
+            grid.Controls.Add(btnBrowseDestBase, 2, 1);
 
-            // Mod name
-            var lblModName = new Label { Left = leftLabel, Top = row, Width = 200, Text = "New mod name:" };
-            txtModName = new TextBox
+            // Row 2: Mod name
+            grid.Controls.Add(L("New mod name:"), 0, 2);
+            txtModName = T("", "e.g., JellysAwesomeMod");
+            grid.Controls.Add(txtModName, 1, 2);
+            grid.Controls.Add(new Panel { Width = 1 }, 2, 2); // spacer
+
+            // Row 3: Package prefix
+            grid.Controls.Add(L("Package ID prefix (author/org):"), 0, 3);
+            txtPkgPrefix = T("jellypowered", "e.g., jellypowered");
+            grid.Controls.Add(txtPkgPrefix, 1, 3);
+            grid.Controls.Add(new Panel { Width = 1 }, 2, 3);
+
+            // Row 4: options (span all columns)
+            var opts = new FlowLayoutPanel
             {
-                Left = leftBox,
-                Top = row - 4,
-                Width = widthBox,
-                PlaceholderText = "e.g., JellysAwesomeMod",
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+                FlowDirection = FlowDirection.LeftToRight,
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                Margin = new Padding(200, 4, 0, 0) // align under inputs
             };
-            row += vstep;
+            chkIncludeGit = new CheckBox { Text = "Include .git (copy Git history)", AutoSize = true, Margin = new Padding(0, 0, 24, 0) };
+            chkOpenWhenDone = new CheckBox { Text = "Open destination when done", AutoSize = true, Checked = true };
+            opts.Controls.Add(chkIncludeGit);
+            opts.Controls.Add(chkOpenWhenDone);
+            grid.Controls.Add(opts, 0, 4);
+            grid.SetColumnSpan(opts, 3);
 
-            // Package prefix (author/org)
-            var lblPkgPrefix = new Label { Left = leftLabel, Top = row, Width = 200, Text = "Package ID prefix (author/org):" };
-            txtPkgPrefix = new TextBox { Left = leftBox, Top = row - 4, Width = 320, PlaceholderText = "e.g., jellypowered" };
-            txtPkgPrefix.Text = "jellypowered";
-            row += vstep;
-
-            // Options
-            chkIncludeGit = new CheckBox { Left = leftBox, Top = row - 8, Width = 260, Text = "Include .git (copy Git history)", Checked = false };
-            chkOpenWhenDone = new CheckBox { Left = leftBox + 260, Top = row - 8, Width = 260, Text = "Open destination when done", Checked = true };
-            row += vstep;
-
-            // Actions
-            btnDryRun = new Button { Left = leftBox, Top = row - 8, Width = 120, Text = "Dry Run" };
-            btnRun = new Button { Left = leftBox + 130, Top = row - 8, Width = 140, Text = "Copy && Apply" };
-            btnCopyLog = new Button { Left = leftBox + 280, Top = row - 8, Width = 120, Text = "Copy Log" };
-            btnDryRun.Click += (_, __) => Run(apply: false);
-            btnRun.Click += (_, __) => Run(apply: true);
+            // Row 5: action buttons (right-aligned)
+            var actions = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.RightToLeft,
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                Margin = new Padding(200, 6, 0, 6)
+            };
+            btnCopyLog = new Button { Text = "Copy Log", AutoSize = true, Margin = new Padding(6, 0, 0, 0) };
+            btnRun = new Button { Text = "Copy && Apply", AutoSize = true, Margin = new Padding(6, 0, 0, 0) };
+            btnDryRun = new Button { Text = "Dry Run", AutoSize = true };
             btnCopyLog.Click += (_, __) => { try { Clipboard.SetText(logBox.Text); } catch { } };
-            row += vstep;
+            btnRun.Click += (_, __) => Run(apply: true);
+            btnDryRun.Click += (_, __) => Run(apply: false);
+            actions.Controls.AddRange([btnCopyLog, btnRun, btnDryRun]);
+            grid.Controls.Add(actions, 0, 5);
+            grid.SetColumnSpan(actions, 3);
 
-            // Console-like log
+            // ===== Log area (fills remaining space) =====
             logBox = new TextBox
             {
-                Left = leftLabel,
-                Top = row - 8,
-                Width = 910,
-                Height = 360,
-                ReadOnly = true,
+                Dock = DockStyle.Fill,
                 Multiline = true,
+                ReadOnly = true,
                 ScrollBars = ScrollBars.Both,
                 WordWrap = false,
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 BackColor = Color.Black,
                 ForeColor = Color.LightGreen,
                 Font = new Font("Consolas", 9f, FontStyle.Regular, GraphicsUnit.Point)
             };
-
-            Controls.AddRange(new Control[]
-            {
-                lblTemplateRoot, txtTemplateRoot, btnBrowseTemplateRoot,
-                lblDestBase, txtDestBase, btnBrowseDestBase,
-                lblModName, txtModName,
-                lblPkgPrefix, txtPkgPrefix,
-                chkIncludeGit, chkOpenWhenDone,
-                btnDryRun, btnRun, btnCopyLog,
-                logBox
-            });
+            root.Controls.Add(logBox, 0, 1);
         }
 
         // --- Logging helpers ---
@@ -260,12 +283,12 @@ namespace PrepareNewMod.Source
                         if (projPath.Replace('/', '\\').StartsWith(@".vscode\", StringComparison.OrdinalIgnoreCase)
                             && projPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
                         {
-                            string typeGuid = m.Groups[1].Value;
-                            string projGuid = m.Groups[4].Value;
+                            string typeGuid = m.Groups[1].Value; // 36 chars, no braces
+                            string projGuid = m.Groups[4].Value; // 36 chars, no braces
                             string newName = modName;
                             string newPath = @".vscode\" + modName + ".csproj";
-                            return $@"Project(""{{
-{typeGuid}}}"") = ""{newName}"", ""{newPath}"", ""{{{projGuid}}}""";
+                            // Write both GUIDs with braces:
+                            return $@"Project(""{{{typeGuid}}}"") = ""{newName}"", ""{newPath}"", ""{{{projGuid}}}""";
                         }
                         return m.Value;
                     },
@@ -444,7 +467,9 @@ namespace PrepareNewMod.Source
                 if (c == '_' || c == '-') { sb.Append('_'); continue; }
                 if (allowDot && c == '.') { sb.Append('.'); continue; }
             }
+#pragma warning disable
             var s = Regex.Replace(sb.ToString(), "_{2,}", "_");
+#pragma warning restore
             return s.Trim('_');
         }
 
@@ -509,7 +534,7 @@ namespace PrepareNewMod.Source
             {
                 try
                 {
-                    DirectoryInfo di = new DirectoryInfo(d) { Attributes = FileAttributes.Normal };
+                    DirectoryInfo di = new(d) { Attributes = FileAttributes.Normal };
                     di.Delete(true);
                 }
                 catch { }

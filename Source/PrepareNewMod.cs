@@ -11,12 +11,10 @@ namespace PrepareNewMod.Source
         {
             try
             {
+                Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-
-                // Ensure we start in the folder containing the EXE (repo root).
                 Directory.SetCurrentDirectory(AppPaths.ExeDir);
-
                 Application.Run(new MainForm());
             }
             catch (Exception ex)
