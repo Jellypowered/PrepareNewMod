@@ -5,8 +5,13 @@ A tiny Windows tool that clones your ModTemplate and rewires everything for a br
 
 ## 🚀 What It Does
 
-When You click **Dry Run**, the tool:
-![App — Dry Run](App%20Screenshot%20Dry%20Run.png)
+When you click **Dry Run**, the tool:
+
+- Simulates the entire mod creation process without making any actual changes to your files.
+- Shows you what would happen to your project files, including new folder names, updated project references, and the generated About.xml content.
+- Allows you to preview the final output before committing any changes, ensuring you're confident about the mod's name, version, and description.
+- Helps avoid accidental overwrites or misconfigurations by providing a safe, visual preview of the mod setup.
+  ![App — Dry Run](App%20Screenshot%20Dry%20Run.png)
 
 When you click **Copy & Apply**, the tool:
 ![App — Copy & Apply](App%20Screenshot%20Copy%20and%20Apply.png)
