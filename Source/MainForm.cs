@@ -501,28 +501,43 @@ namespace PrepareNewMod.Source
 
         private static void CopyDirectory(string sourceDir, string destDir, bool includeGit)
         {
+            // Identify the running tool (works for single-file and normal publish)
+            string selfPath = Environment.ProcessPath ?? Application.ExecutablePath;
+            string selfBaseName = Path.GetFileNameWithoutExtension(selfPath); // e.g., "PrepareNewMod"
+
+            // Copy files (skip the tool itself and its sidecar files)
             foreach (var file in Directory.GetFiles(sourceDir))
             {
-                var name = Path.GetFileName(file);
-                var destFile = Path.Combine(destDir, name);
+                string name = Path.GetFileName(file);
+                string nameNoExt = Path.GetFileNameWithoutExtension(file);
+
+                // Don’t copy the tool EXE/DLL/PDB/deps/runtimeconfig or settings file
+                if (nameNoExt.Equals(selfBaseName, StringComparison.OrdinalIgnoreCase)) continue;
+                if (name.Equals("settings.json", StringComparison.OrdinalIgnoreCase)) continue;
+
+                string destFile = Path.Combine(destDir, name);
                 File.Copy(file, destFile, overwrite: true);
             }
 
+            // Recurse into subdirectories (skip build/meta folders)
             foreach (var dir in Directory.GetDirectories(sourceDir))
             {
-                var name = Path.GetFileName(dir);
+                string name = Path.GetFileName(dir);
 
                 if (!includeGit && name.Equals(".git", StringComparison.OrdinalIgnoreCase)) continue;
                 if (name.Equals(".vs", StringComparison.OrdinalIgnoreCase)) continue;
                 if (name.Equals("bin", StringComparison.OrdinalIgnoreCase)) continue;
                 if (name.Equals("obj", StringComparison.OrdinalIgnoreCase)) continue;
-                if (name.Equals("PrepareNewMod.exe", StringComparison.OrdinalIgnoreCase)) continue; // Don't copy the Exe. 
 
-                var destSub = Path.Combine(destDir, name);
+                // If you publish the tool into a local folder like "_dist", skip that too:
+                if (name.Equals("_dist", StringComparison.OrdinalIgnoreCase)) continue;
+
+                string destSub = Path.Combine(destDir, name);
                 Directory.CreateDirectory(destSub);
                 CopyDirectory(dir, destSub, includeGit);
             }
         }
+
 
         private static string SanitizeFileName(string name)
         {
