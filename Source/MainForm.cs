@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using System.Xml;
 
+
 namespace PrepareNewMod.Source
 {
     public class MainForm : Form
@@ -29,6 +30,8 @@ namespace PrepareNewMod.Source
 
         // Console-like log
         private readonly TextBox logBox;
+        private readonly string settingsPath = Path.Combine(AppPaths.ExeDir, "settings.json");
+
 
         public MainForm()
         {
@@ -186,6 +189,8 @@ namespace PrepareNewMod.Source
                 Font = new Font("Consolas", 9f, FontStyle.Regular, GraphicsUnit.Point)
             };
             root.Controls.Add(logBox, 0, 1);
+            
+            LoadSettings();
         }
 
         // --- Logging helpers ---
@@ -220,6 +225,8 @@ namespace PrepareNewMod.Source
 
                 if (string.IsNullOrWhiteSpace(modName))
                     throw new InvalidOperationException("Please enter a mod name.");
+
+                SaveSettings(); // persist current UI values
 
                 string destRoot = Path.Combine(destBase, modName);
                 string templateSln = FindSolution(templateRoot, out _);
@@ -509,6 +516,7 @@ namespace PrepareNewMod.Source
                 if (name.Equals(".vs", StringComparison.OrdinalIgnoreCase)) continue;
                 if (name.Equals("bin", StringComparison.OrdinalIgnoreCase)) continue;
                 if (name.Equals("obj", StringComparison.OrdinalIgnoreCase)) continue;
+                if (name.Equals("PrepareNewMod.exe", StringComparison.OrdinalIgnoreCase)) continue; // Don't copy the Exe. 
 
                 var destSub = Path.Combine(destDir, name);
                 Directory.CreateDirectory(destSub);
@@ -522,6 +530,53 @@ namespace PrepareNewMod.Source
             foreach (var c in Path.GetInvalidFileNameChars())
                 name = name.Replace(c, '_');
             return name.Trim();
+        }
+
+        private sealed class UiSettings
+        {
+            public string? TemplateRoot { get; set; }
+            public string? DestBase { get; set; }
+            public string? PkgPrefix { get; set; }
+            public bool IncludeGit { get; set; }
+            public bool OpenWhenDone { get; set; }
+        }
+
+        private void LoadSettings()
+        {
+            try
+            {
+                if (!File.Exists(settingsPath)) return;
+                var json = File.ReadAllText(settingsPath, Encoding.UTF8);
+                var s = System.Text.Json.JsonSerializer.Deserialize<UiSettings>(json);
+                if (s is null) return;
+
+                if (!string.IsNullOrWhiteSpace(s.TemplateRoot)) txtTemplateRoot.Text = s.TemplateRoot!;
+                if (!string.IsNullOrWhiteSpace(s.DestBase)) txtDestBase.Text = s.DestBase!;
+                if (!string.IsNullOrWhiteSpace(s.PkgPrefix)) txtPkgPrefix.Text = s.PkgPrefix!;
+                chkIncludeGit.Checked = s.IncludeGit;
+                chkOpenWhenDone.Checked = s.OpenWhenDone;
+            }
+            catch { /* ignore */ }
+        }
+
+        private void SaveSettings()
+        {
+            try
+            {
+                var s = new UiSettings
+                {
+                    TemplateRoot = txtTemplateRoot.Text,
+                    DestBase = txtDestBase.Text,
+                    PkgPrefix = txtPkgPrefix.Text,
+                    IncludeGit = chkIncludeGit.Checked,
+                    OpenWhenDone = chkOpenWhenDone.Checked
+                };
+#pragma warning disable
+                var json = System.Text.Json.JsonSerializer.Serialize(s, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+#pragma warning restore
+                File.WriteAllText(settingsPath, json, new UTF8Encoding(false));
+            }
+            catch { /* ignore */ }
         }
 
         private static void TryDeleteDirectoryContents(string dir)

@@ -20,6 +20,7 @@
 
     <!-- optional: resolve dotnet on PATH -->
     <DotNetExe>dotnet</DotNetExe>
+    <Nullable>annotations</Nullable>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -36,14 +37,11 @@
   </ItemGroup>
 
   <!-- Auto publish after Build (Release only), with guard to avoid recursion -->
-  <Target Name="AutoPublish"
-          AfterTargets="Build"
-          Condition="'$(Configuration)'=='Release' AND '$(AutoPublishDisabled)'!='true'">
+  <Target Name="AutoPublish" AfterTargets="Build" Condition="'$(Configuration)'=='Release' AND '$(AutoPublishDisabled)'!='true'">
     <!-- ensure output dir exists -->
     <MakeDir Directories="$(PublishOut)" Condition="!Exists('$(PublishOut)')" />
     <Message Text="AutoPublish → $(PublishOut)" Importance="high" />
 
-    <Exec WorkingDirectory="$(ProjectDir)"
-          Command="&quot;$(DotNetExe)&quot; publish &quot;$(MSBuildProjectFullPath)&quot; -c $(Configuration) -r $(RID) --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:DebugType=None -p:PublishTrimmed=false -p:AutoPublishDisabled=true -o &quot;$(PublishOut)&quot;" />
+    <Exec WorkingDirectory="$(ProjectDir)" Command="&quot;$(DotNetExe)&quot; publish &quot;$(MSBuildProjectFullPath)&quot; -c $(Configuration) -r $(RID) --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:DebugType=None -p:PublishTrimmed=false -p:AutoPublishDisabled=true -o &quot;$(PublishOut)&quot;" />
   </Target>
 </Project>
