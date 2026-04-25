@@ -95,10 +95,17 @@ namespace PrepareNewMod.Source
                 string templateRoot = RequireDir(txtTemplateRoot.Text, "Template root (source) is invalid.");
                 string destBase = RequireDir(txtDestBase.Text, "Destination base folder is invalid.");
                 string modName = SanitizeFileName(txtModName.Text.Trim());
+                string namespaceOverrideRaw = txtNamespace.Text.Trim();
+                string namespaceName = string.IsNullOrWhiteSpace(namespaceOverrideRaw)
+                    ? BuildCSharpNamespace(modName, allowDots: false)
+                    : BuildCSharpNamespace(namespaceOverrideRaw, allowDots: true);
                 string pkgPrefixRaw = txtPkgPrefix.Text.Trim();
 
                 if (string.IsNullOrWhiteSpace(modName))
                     throw new InvalidOperationException("Please enter a mod name.");
+
+                if (string.IsNullOrWhiteSpace(namespaceName))
+                    throw new InvalidOperationException("Mod name does not produce a valid C# namespace.");
 
                 SaveSettings();
 
@@ -108,6 +115,9 @@ namespace PrepareNewMod.Source
                 Log($"Template root : {templateRoot}");
                 Log($"Destination   : {destRoot}");
                 Log($"Mod name      : {modName}");
+                Log($"Namespace     : {namespaceName}");
+                if (!string.IsNullOrWhiteSpace(namespaceOverrideRaw))
+                    Log($"Namespace src : custom override '{namespaceOverrideRaw}'");
                 Log($"Pkg prefix    : {pkgPrefixRaw}");
                 LogBlank();
 
@@ -118,6 +128,9 @@ namespace PrepareNewMod.Source
                     Log("- Would UPDATE .sln project entry (name/path)");
                     Log($"- Would RENAME .vscode\\mod.csproj -> .vscode\\{modName}.csproj");
                     Log("- Would EDIT RootNamespace/AssemblyName in .csproj");
+                    string templateNamespace = ReadTemplateRootNamespace(templateRoot);
+                    Log($"- Would REWRITE C# namespaces: {templateNamespace} -> {namespaceName}");
+                    Log("- Would REWRITE C# namespace/usings in copied .cs files");
                     Log("- Would UPDATE About/About.xml <name>, <packageId>, <author>, and clear PublishedFileId.txt");
                     return;
                 }
@@ -208,12 +221,16 @@ namespace PrepareNewMod.Source
                 xmlProj.Load(csprojNew);
 
                 bool changedProj = false;
+                string oldRootNamespace = string.Empty;
                 foreach (XmlNode pg in xmlProj.SelectNodes("/Project/PropertyGroup")!)
                 {
                     var rn = pg.SelectSingleNode("RootNamespace");
                     var an = pg.SelectSingleNode("AssemblyName");
-                    if (rn != null && rn.InnerText != modName) { rn.InnerText = modName; changedProj = true; }
-                    if (an != null && an.InnerText != modName) { an.InnerText = modName; changedProj = true; }
+                    if (string.IsNullOrWhiteSpace(oldRootNamespace) && rn != null && !string.IsNullOrWhiteSpace(rn.InnerText))
+                        oldRootNamespace = rn.InnerText.Trim();
+
+                    if (rn != null && rn.InnerText != namespaceName) { rn.InnerText = namespaceName; changedProj = true; }
+                    if (an != null && an.InnerText != namespaceName) { an.InnerText = namespaceName; changedProj = true; }
                 }
                 if (changedProj)
                 {
@@ -225,6 +242,12 @@ namespace PrepareNewMod.Source
                 {
                     Log("RootNamespace/AssemblyName already correct.");
                 }
+
+                int rewrittenNamespaceFiles = RewriteTemplateNamespaces(destRoot, oldRootNamespace, namespaceName);
+                if (rewrittenNamespaceFiles > 0)
+                    Log($"Rewrote namespace/usings in {rewrittenNamespaceFiles} source file(s).");
+                else
+                    Log("No C# namespace rewrites were needed.");
 
                 // 3) Update About/About.xml
                 string aboutDir = Path.Combine(destRoot, "About");
@@ -406,6 +429,136 @@ namespace PrepareNewMod.Source
             return name.Trim();
         }
 
+        private static string BuildCSharpNamespace(string name, bool allowDots)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "";
+
+            var sb = new StringBuilder(name.Length + 1);
+            foreach (char c in name)
+            {
+                if (char.IsLetterOrDigit(c) || c == '_')
+                {
+                    sb.Append(c);
+                }
+                else if (allowDots && c == '.')
+                {
+                    sb.Append('.');
+                }
+                else
+                {
+                    sb.Append('_');
+                }
+            }
+
+            string ns = sb.ToString();
+            if (allowDots)
+            {
+                ns = Regex.Replace(ns, "\\.+", ".").Trim('.');
+                string[] parts = ns.Split('.', StringSplitOptions.RemoveEmptyEntries);
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    string p = Regex.Replace(parts[i], "_+", "_").Trim('_');
+                    if (string.IsNullOrWhiteSpace(p)) return "";
+                    if (!char.IsLetter(p[0]) && p[0] != '_') p = "_" + p;
+                    parts[i] = p;
+                }
+                return string.Join('.', parts);
+            }
+
+            ns = Regex.Replace(ns, "_+", "_").Trim('_');
+            if (string.IsNullOrWhiteSpace(ns)) return "";
+            if (!char.IsLetter(ns[0]) && ns[0] != '_') ns = "_" + ns;
+            return ns;
+        }
+
+        private static string ReadTemplateRootNamespace(string templateRoot)
+        {
+            string vsCodeDir = Path.Combine(templateRoot, ".vscode");
+            if (!Directory.Exists(vsCodeDir)) return "Template";
+
+            string csproj = Path.Combine(vsCodeDir, "mod.csproj");
+            if (!File.Exists(csproj))
+            {
+                var candidates = Directory.GetFiles(vsCodeDir, "*.csproj", SearchOption.TopDirectoryOnly);
+                if (candidates.Length == 1) csproj = candidates[0];
+            }
+
+            if (!File.Exists(csproj)) return "Template";
+
+            try
+            {
+                var xmlProj = new XmlDocument();
+                xmlProj.Load(csproj);
+                var rn = xmlProj.SelectSingleNode("/Project/PropertyGroup/RootNamespace");
+                if (rn != null && !string.IsNullOrWhiteSpace(rn.InnerText))
+                    return rn.InnerText.Trim();
+            }
+            catch
+            {
+                // Return default token if parsing fails.
+            }
+
+            return "Template";
+        }
+
+        private static int RewriteTemplateNamespaces(string rootDir, string oldNamespace, string newNamespace)
+        {
+            if (string.IsNullOrWhiteSpace(newNamespace)) return 0;
+
+            int changedFiles = 0;
+            foreach (string file in EnumerateCSharpFiles(rootDir))
+            {
+                string original = File.ReadAllText(file, Encoding.UTF8);
+                string updated = original.Replace("__MOD_NAMESPACE__", newNamespace, StringComparison.Ordinal);
+
+                if (!string.IsNullOrWhiteSpace(oldNamespace) && !oldNamespace.Equals(newNamespace, StringComparison.Ordinal))
+                {
+                    string escapedOld = Regex.Escape(oldNamespace);
+                    updated = Regex.Replace(
+                        updated,
+                        @"(?m)^(\s*namespace\s+)" + escapedOld + @"(\b(?:\.[A-Za-z_][A-Za-z0-9_]*)?)",
+                        "$1" + newNamespace + "$2");
+
+                    updated = Regex.Replace(
+                        updated,
+                        @"(?m)^(\s*using\s+)" + escapedOld + @"(\b(?:\.[A-Za-z_][A-Za-z0-9_]*)?\s*;)",
+                        "$1" + newNamespace + "$2");
+                }
+
+                if (!string.Equals(original, updated, StringComparison.Ordinal))
+                {
+                    File.WriteAllText(file, updated, new UTF8Encoding(false));
+                    changedFiles++;
+                }
+            }
+
+            return changedFiles;
+        }
+
+        private static System.Collections.Generic.IEnumerable<string> EnumerateCSharpFiles(string rootDir)
+        {
+            var stack = new System.Collections.Generic.Stack<string>();
+            stack.Push(rootDir);
+
+            while (stack.Count > 0)
+            {
+                string dir = stack.Pop();
+
+                foreach (string sub in Directory.GetDirectories(dir))
+                {
+                    string name = Path.GetFileName(sub);
+                    if (name.Equals(".git", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (name.Equals(".vs", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (name.Equals("bin", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (name.Equals("obj", StringComparison.OrdinalIgnoreCase)) continue;
+                    stack.Push(sub);
+                }
+
+                foreach (string cs in Directory.GetFiles(dir, "*.cs", SearchOption.TopDirectoryOnly))
+                    yield return cs;
+            }
+        }
+
         private static void TryDeleteDirectoryContents(string dir)
         {
             foreach (var f in Directory.GetFiles(dir, "*", SearchOption.TopDirectoryOnly))
@@ -429,6 +582,7 @@ namespace PrepareNewMod.Source
         {
             public string? TemplateRoot { get; set; }
             public string? DestBase { get; set; }
+            public string? NamespaceOverride { get; set; }
             public string? PkgPrefix { get; set; }
             public bool IncludeGit { get; set; }
             public bool OpenWhenDone { get; set; }
@@ -445,6 +599,7 @@ namespace PrepareNewMod.Source
 
                 if (!string.IsNullOrWhiteSpace(s.TemplateRoot)) txtTemplateRoot.Text = s.TemplateRoot!;
                 if (!string.IsNullOrWhiteSpace(s.DestBase)) txtDestBase.Text = s.DestBase!;
+                if (!string.IsNullOrWhiteSpace(s.NamespaceOverride)) txtNamespace.Text = s.NamespaceOverride!;
                 if (!string.IsNullOrWhiteSpace(s.PkgPrefix)) txtPkgPrefix.Text = s.PkgPrefix!;
                 chkIncludeGit.IsChecked = s.IncludeGit;
                 chkOpenWhenDone.IsChecked = s.OpenWhenDone;
@@ -460,6 +615,7 @@ namespace PrepareNewMod.Source
                 {
                     TemplateRoot = txtTemplateRoot.Text,
                     DestBase = txtDestBase.Text,
+                    NamespaceOverride = txtNamespace.Text,
                     PkgPrefix = txtPkgPrefix.Text,
                     IncludeGit = chkIncludeGit.IsChecked == true,
                     OpenWhenDone = chkOpenWhenDone.IsChecked == true
