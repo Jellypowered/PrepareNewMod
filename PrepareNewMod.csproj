@@ -1,15 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- WinForms GUI exe -->
+    <!-- WPF GUI exe -->
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
 
     <!-- Single-file publish prefs -->
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
 
     <!-- Icon -->
     <ApplicationIcon>Reconfigure.ico</ApplicationIcon>
@@ -36,12 +37,5 @@
     <Folder Include="Properties\" />
   </ItemGroup>
 
-  <!-- Auto publish after Build (Release only), with guard to avoid recursion -->
-  <Target Name="AutoPublish" AfterTargets="Build" Condition="'$(Configuration)'=='Release' AND '$(AutoPublishDisabled)'!='true'">
-    <!-- ensure output dir exists -->
-    <MakeDir Directories="$(PublishOut)" Condition="!Exists('$(PublishOut)')" />
-    <Message Text="AutoPublish → $(PublishOut)" Importance="high" />
-
-    <Exec WorkingDirectory="$(ProjectDir)" Command="&quot;$(DotNetExe)&quot; publish &quot;$(MSBuildProjectFullPath)&quot; -c $(Configuration) -r $(RID) --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:DebugType=None -p:PublishTrimmed=false -p:AutoPublishDisabled=true -o &quot;$(PublishOut)&quot;" />
-  </Target>
+  <!-- Manual publish only: dotnet publish -c Release -->
 </Project>
