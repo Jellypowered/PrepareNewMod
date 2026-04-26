@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -63,6 +64,9 @@ namespace PrepareNewMod.Source
         private void BrowseDestBase_Click(object sender, RoutedEventArgs e) =>
             BrowseFolderInto(txtDestBase);
 
+        private void BrowseExistingModRoot_Click(object sender, RoutedEventArgs e) =>
+            BrowseFolderInto(txtExistingModRoot);
+
         private void BrowseFolderInto(System.Windows.Controls.TextBox tb)
         {
             var dialog = new OpenFolderDialog
@@ -78,6 +82,8 @@ namespace PrepareNewMod.Source
 
         private void BtnDryRun_Click(object sender, RoutedEventArgs e) => Run(apply: false);
         private void BtnRun_Click(object sender, RoutedEventArgs e) => Run(apply: true);
+        private void BtnUpdateDryRun_Click(object sender, RoutedEventArgs e) => RunUpdateExisting(apply: false);
+        private void BtnUpdateExisting_Click(object sender, RoutedEventArgs e) => RunUpdateExisting(apply: true);
 
         private void BtnCopyLog_Click(object sender, RoutedEventArgs e)
         {
@@ -313,6 +319,92 @@ namespace PrepareNewMod.Source
             }
         }
 
+        private void RunUpdateExisting(bool apply)
+        {
+            try
+            {
+                ClearLog();
+
+                string templateRoot = RequireDir(txtTemplateRoot.Text, "Template root (source) is invalid.");
+                string existingModRoot = RequireDir(txtExistingModRoot.Text, "Existing mod folder is invalid.");
+                string modName = new DirectoryInfo(existingModRoot).Name;
+
+                SaveSettings();
+
+                Log("UPDATE EXISTING MOD MODE");
+                Log($"Template root : {templateRoot}");
+                Log($"Target mod    : {existingModRoot}");
+                Log($"Mod name      : {modName}");
+                LogBlank();
+
+                var plan = BuildTemplateUpdatePlan(templateRoot, existingModRoot, includeGit: chkIncludeGit.IsChecked == true);
+                int overwriteCount = 0;
+                int createCount = 0;
+                foreach (var item in plan)
+                {
+                    if (File.Exists(item.DestinationPath)) overwriteCount++;
+                    else createCount++;
+                }
+
+                Log($"Planned updates: {plan.Count} file(s) ({createCount} new, {overwriteCount} overwrite)");
+                Log("Preserved: About/, Source/, mod content folders, .sln, and .csproj identity files.");
+
+                if (plan.Count == 0)
+                {
+                    Log("Nothing to update.");
+                    return;
+                }
+
+                if (!apply)
+                {
+                    foreach (var item in plan)
+                        Log($"- Would update: {item.RelativePath}");
+                    return;
+                }
+
+                var confirm = MessageBox.Show(
+                    this,
+                    "Apply template tooling updates to this existing mod?\r\n\r\n" +
+                    $"Target: {existingModRoot}\r\n" +
+                    $"Files: {plan.Count} ({createCount} new, {overwriteCount} overwrite)",
+                    "Update Existing Mod",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (confirm != MessageBoxResult.Yes)
+                    throw new OperationCanceledException("Update cancelled by user.");
+
+                foreach (var item in plan)
+                {
+                    string? destDir = Path.GetDirectoryName(item.DestinationPath);
+                    if (!string.IsNullOrWhiteSpace(destDir))
+                        Directory.CreateDirectory(destDir);
+
+                    File.Copy(item.SourcePath, item.DestinationPath, overwrite: true);
+                }
+
+                LogBlank();
+                Log("DONE.");
+                Log($"- Updated mod: {existingModRoot}");
+                Log($"- Files synced: {plan.Count}");
+
+                if (chkOpenWhenDone.IsChecked == true)
+                {
+                    try { Process.Start("explorer.exe", existingModRoot); } catch { }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Log("Cancelled.");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Prepare New Mod - Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                Log("ERROR: " + ex);
+            }
+        }
+
         // --- XML helpers ---
 
         private static void UpdateAboutXml(string path, string modName, string pkgPrefixRaw)
@@ -419,6 +511,123 @@ namespace PrepareNewMod.Source
                 Directory.CreateDirectory(destSub);
                 CopyDirectory(dir, destSub, includeGit);
             }
+        }
+
+        private sealed class TemplateUpdateItem
+        {
+            public string SourcePath { get; set; } = string.Empty;
+            public string DestinationPath { get; set; } = string.Empty;
+            public string RelativePath { get; set; } = string.Empty;
+        }
+
+        private static List<TemplateUpdateItem> BuildTemplateUpdatePlan(string templateRoot, string targetRoot, bool includeGit)
+        {
+            var result = new List<TemplateUpdateItem>();
+            string selfPath = Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
+            string selfBaseName = Path.GetFileNameWithoutExtension(selfPath);
+
+            var stack = new Stack<(string SourceDir, string RelativeDir)>();
+            stack.Push((templateRoot, string.Empty));
+
+            while (stack.Count > 0)
+            {
+                var (sourceDir, relativeDir) = stack.Pop();
+
+                foreach (string dir in Directory.GetDirectories(sourceDir))
+                {
+                    string dirName = Path.GetFileName(dir);
+                    string rel = string.IsNullOrEmpty(relativeDir) ? dirName : relativeDir + "/" + dirName;
+                    if (ShouldSkipUpdateDirectory(rel, includeGit)) continue;
+                    stack.Push((dir, rel));
+                }
+
+                foreach (string file in Directory.GetFiles(sourceDir))
+                {
+                    string fileName = Path.GetFileName(file);
+                    string rel = string.IsNullOrEmpty(relativeDir) ? fileName : relativeDir + "/" + fileName;
+                    if (!ShouldIncludeUpdateFile(rel, fileName, selfBaseName)) continue;
+
+                    string dest = Path.Combine(targetRoot, rel.Replace('/', Path.DirectorySeparatorChar));
+                    result.Add(new TemplateUpdateItem
+                    {
+                        SourcePath = file,
+                        DestinationPath = dest,
+                        RelativePath = rel
+                    });
+                }
+            }
+
+            return result;
+        }
+
+        private static bool ShouldSkipUpdateDirectory(string relativeDir, bool includeGit)
+        {
+            string[] segments = relativeDir.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0) return false;
+            string firstSegment = segments[0];
+
+            foreach (string segment in segments)
+            {
+                if (segment.Equals(".vs", StringComparison.OrdinalIgnoreCase)) return true;
+                if (segment.Equals("bin", StringComparison.OrdinalIgnoreCase)) return true;
+                if (segment.Equals("obj", StringComparison.OrdinalIgnoreCase)) return true;
+                if (segment.Equals("_dist", StringComparison.OrdinalIgnoreCase)) return true;
+            }
+
+            if (!includeGit && firstSegment.Equals(".git", StringComparison.OrdinalIgnoreCase)) return true;
+
+            // Preserve mod identity/content folders on update.
+            if (firstSegment.Equals("About", StringComparison.OrdinalIgnoreCase)) return true;
+            if (firstSegment.Equals("Source", StringComparison.OrdinalIgnoreCase)) return true;
+            if (firstSegment.Equals("Assemblies", StringComparison.OrdinalIgnoreCase)) return true;
+            if (firstSegment.Equals("Defs", StringComparison.OrdinalIgnoreCase)) return true;
+            if (firstSegment.Equals("Languages", StringComparison.OrdinalIgnoreCase)) return true;
+            if (firstSegment.Equals("Patches", StringComparison.OrdinalIgnoreCase)) return true;
+            if (firstSegment.Equals("Textures", StringComparison.OrdinalIgnoreCase)) return true;
+            if (firstSegment.Equals("Sounds", StringComparison.OrdinalIgnoreCase)) return true;
+            if (firstSegment.Equals("Fonts", StringComparison.OrdinalIgnoreCase)) return true;
+
+            return false;
+        }
+
+        private static bool ShouldIncludeUpdateFile(string relativePath, string fileName, string selfBaseName)
+        {
+            string rel = relativePath.Replace('\\', '/');
+            string[] segments = rel.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0) return false;
+            string firstSegment = segments[0];
+            string extension = Path.GetExtension(fileName);
+            string fileNameNoExt = Path.GetFileNameWithoutExtension(fileName);
+
+            // Preserve commonly customized root files for existing mods.
+            if (segments.Length == 1 && fileName.Equals(".gitignore", StringComparison.OrdinalIgnoreCase)) return false;
+            if (segments.Length == 1 && fileName.Equals("README.md", StringComparison.OrdinalIgnoreCase)) return false;
+
+            foreach (string segment in segments)
+            {
+                if (segment.Equals(".vs", StringComparison.OrdinalIgnoreCase)) return false;
+                if (segment.Equals("bin", StringComparison.OrdinalIgnoreCase)) return false;
+                if (segment.Equals("obj", StringComparison.OrdinalIgnoreCase)) return false;
+                if (segment.Equals("_dist", StringComparison.OrdinalIgnoreCase)) return false;
+            }
+
+            if (fileNameNoExt.Equals(selfBaseName, StringComparison.OrdinalIgnoreCase)) return false;
+            if (fileName.Equals("settings.json", StringComparison.OrdinalIgnoreCase)) return false;
+
+            // Keep existing mod/project identity untouched.
+            if (extension.Equals(".sln", StringComparison.OrdinalIgnoreCase)) return false;
+            if (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase)) return false;
+            if (extension.Equals(".user", StringComparison.OrdinalIgnoreCase)) return false;
+
+            if (firstSegment.Equals("About", StringComparison.OrdinalIgnoreCase)) return false;
+            if (firstSegment.Equals("Source", StringComparison.OrdinalIgnoreCase)) return false;
+
+            // Keep .vscode project file naming as-is.
+            if (firstSegment.Equals(".vscode", StringComparison.OrdinalIgnoreCase)
+                && extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            return true;
         }
 
         private static string SanitizeFileName(string name)
@@ -582,6 +791,7 @@ namespace PrepareNewMod.Source
         {
             public string? TemplateRoot { get; set; }
             public string? DestBase { get; set; }
+            public string? ExistingModRoot { get; set; }
             public string? NamespaceOverride { get; set; }
             public string? PkgPrefix { get; set; }
             public bool IncludeGit { get; set; }
@@ -599,6 +809,7 @@ namespace PrepareNewMod.Source
 
                 if (!string.IsNullOrWhiteSpace(s.TemplateRoot)) txtTemplateRoot.Text = s.TemplateRoot!;
                 if (!string.IsNullOrWhiteSpace(s.DestBase)) txtDestBase.Text = s.DestBase!;
+                if (!string.IsNullOrWhiteSpace(s.ExistingModRoot)) txtExistingModRoot.Text = s.ExistingModRoot!;
                 if (!string.IsNullOrWhiteSpace(s.NamespaceOverride)) txtNamespace.Text = s.NamespaceOverride!;
                 if (!string.IsNullOrWhiteSpace(s.PkgPrefix)) txtPkgPrefix.Text = s.PkgPrefix!;
                 chkIncludeGit.IsChecked = s.IncludeGit;
@@ -615,6 +826,7 @@ namespace PrepareNewMod.Source
                 {
                     TemplateRoot = txtTemplateRoot.Text,
                     DestBase = txtDestBase.Text,
+                    ExistingModRoot = txtExistingModRoot.Text,
                     NamespaceOverride = txtNamespace.Text,
                     PkgPrefix = txtPkgPrefix.Text,
                     IncludeGit = chkIncludeGit.IsChecked == true,

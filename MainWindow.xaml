@@ -129,6 +129,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="12"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="10"/>
@@ -145,20 +146,25 @@
                 <TextBox x:Name="txtDestBase" Grid.Row="1" Grid.Column="1" Style="{StaticResource InputStyle}" Margin="0,0,8,6"/>
                 <Button Grid.Row="1" Grid.Column="2" Content="Browse" Style="{StaticResource SecondaryBtn}" Margin="0,0,0,6" Click="BrowseDestBase_Click"/>
 
+                <!-- Existing mod root (for update mode) -->
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Existing mod folder:" Style="{StaticResource FieldLabel}" Margin="0,0,12,6"/>
+                <TextBox x:Name="txtExistingModRoot" Grid.Row="2" Grid.Column="1" Style="{StaticResource InputStyle}" Margin="0,0,8,6"/>
+                <Button Grid.Row="2" Grid.Column="2" Content="Browse" Style="{StaticResource SecondaryBtn}" Margin="0,0,0,6" Click="BrowseExistingModRoot_Click"/>
+
                 <!-- Mod name -->
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="New mod name:" Style="{StaticResource FieldLabel}" Margin="0,0,12,6"/>
-                <TextBox x:Name="txtModName" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource InputStyle}" Margin="0,0,0,6"/>
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="New mod name:" Style="{StaticResource FieldLabel}" Margin="0,0,12,6"/>
+                <TextBox x:Name="txtModName" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource InputStyle}" Margin="0,0,0,6"/>
 
                 <!-- Namespace override -->
-                <TextBlock Grid.Row="3" Grid.Column="0" Text="Namespace (optional):" Style="{StaticResource FieldLabel}" Margin="0,0,12,6"/>
-                <TextBox x:Name="txtNamespace" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource InputStyle}" Margin="0,0,0,6"/>
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Namespace (optional):" Style="{StaticResource FieldLabel}" Margin="0,0,12,6"/>
+                <TextBox x:Name="txtNamespace" Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource InputStyle}" Margin="0,0,0,6"/>
 
                 <!-- Package prefix -->
-                <TextBlock Grid.Row="4" Grid.Column="0" Text="Package ID prefix:" Style="{StaticResource FieldLabel}"/>
-                <TextBox x:Name="txtPkgPrefix" Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource InputStyle}"/>
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="Package ID prefix:" Style="{StaticResource FieldLabel}"/>
+                <TextBox x:Name="txtPkgPrefix" Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource InputStyle}"/>
 
                 <!-- Options -->
-                <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal">
+                <StackPanel Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal">
                     <CheckBox x:Name="chkIncludeGit" Content="Include .git (copy Git history)"
                               Style="{StaticResource ModCheck}" Margin="0,0,24,0"/>
                     <CheckBox x:Name="chkOpenWhenDone" Content="Open destination when done"
@@ -166,12 +172,16 @@
                 </StackPanel>
 
                 <!-- Action buttons -->
-                <StackPanel Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="3"
+                <StackPanel Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="3"
                             Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button x:Name="btnDryRun" Content="Dry Run"
                             Style="{StaticResource SecondaryBtn}" Margin="0,0,8,0" Click="BtnDryRun_Click"/>
                     <Button x:Name="btnRun" Content="Copy &amp; Apply"
                             Style="{StaticResource PrimaryBtn}" Margin="0,0,8,0" Click="BtnRun_Click"/>
+                    <Button x:Name="btnUpdateDryRun" Content="Update Dry Run"
+                        Style="{StaticResource SecondaryBtn}" Margin="0,0,8,0" Click="BtnUpdateDryRun_Click"/>
+                    <Button x:Name="btnUpdateExisting" Content="Update Existing Mod"
+                        Style="{StaticResource SecondaryBtn}" Margin="0,0,8,0" Click="BtnUpdateExisting_Click"/>
                     <Button x:Name="btnCopyLog" Content="Copy Log"
                             Style="{StaticResource SecondaryBtn}" Click="BtnCopyLog_Click"/>
                 </StackPanel>

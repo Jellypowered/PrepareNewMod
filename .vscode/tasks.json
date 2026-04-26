@@ -1,0 +1,39 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build Debug",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}/PrepareNewMod.csproj",
+        "-c",
+        "Debug"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$msCompile"
+      ]
+    },
+    {
+      "label": "Publish Release (Standalone EXE)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "dotnet publish \"${workspaceFolder}/PrepareNewMod.csproj\" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:PublishTrimmed=false -o \"${workspaceFolder}/bin/Release/net8.0-windows/win-x64/publish\"; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; Copy-Item \"${workspaceFolder}/bin/Release/net8.0-windows/win-x64/publish/PrepareNewMod.exe\" \"${workspaceFolder}/PrepareNewMod.exe\" -Force; Write-Host \"Standalone EXE refreshed at ${workspaceFolder}/PrepareNewMod.exe\""
+      ],
+      "group": "build",
+      "problemMatcher": [
+        "$msCompile"
+      ]
+    }
+  ]
+}
