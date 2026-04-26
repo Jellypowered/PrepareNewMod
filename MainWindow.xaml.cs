@@ -383,6 +383,9 @@ namespace PrepareNewMod.Source
                     File.Copy(item.SourcePath, item.DestinationPath, overwrite: true);
                 }
 
+                // Validate and fix csproj ExcludeAssets settings
+                ValidateAndFixCsprojExcludeAssets(existingModRoot);
+
                 LogBlank();
                 Log("DONE.");
                 Log($"- Updated mod: {existingModRoot}");
@@ -431,6 +434,114 @@ namespace PrepareNewMod.Source
 
             using var writer = new XmlTextWriter(path, new UTF8Encoding(false)) { Formatting = Formatting.Indented };
             doc.Save(writer);
+        }
+
+        private void ValidateAndFixCsprojExcludeAssets(string modRoot)
+        {
+            try
+            {
+                // Find the mod's csproj file
+                string vsCodeDir = Path.Combine(modRoot, ".vscode");
+                if (!Directory.Exists(vsCodeDir))
+                {
+                    Log("- .vscode directory not found; skipping csproj validation.");
+                    return;
+                }
+
+                string csprojPath = Path.Combine(vsCodeDir, "mod.csproj");
+                if (!File.Exists(csprojPath))
+                {
+                    var candidates = Directory.GetFiles(vsCodeDir, "*.csproj", SearchOption.TopDirectoryOnly);
+                    if (candidates.Length != 1)
+                    {
+                        Log("- Could not locate unique .csproj file; skipping validation.");
+                        return;
+                    }
+                    csprojPath = candidates[0];
+                }
+
+                var xmlDoc = new XmlDocument { PreserveWhitespace = true };
+                xmlDoc.Load(csprojPath);
+
+                // Find ItemGroup with Lib.Harmony PackageReference
+                XmlNode? libHarmonyRef = null;
+                XmlNode? itemGroupParent = null;
+
+                var itemGroups = xmlDoc.SelectNodes("/Project/ItemGroup");
+                if (itemGroups != null)
+                {
+                    foreach (XmlNode itemGroup in itemGroups)
+                    {
+                        var pkgRefs = itemGroup.SelectNodes("PackageReference");
+                        if (pkgRefs != null)
+                        {
+                            foreach (XmlNode pkgRef in pkgRefs)
+                            {
+                                var includeAttr = pkgRef.Attributes?["Include"];
+                                if (includeAttr?.Value == "Lib.Harmony")
+                                {
+                                    libHarmonyRef = pkgRef;
+                                    itemGroupParent = itemGroup;
+                                    break;
+                                }
+                            }
+                        }
+                        if (libHarmonyRef != null) break;
+                    }
+                }
+
+                if (libHarmonyRef == null)
+                {
+                    Log("- Lib.Harmony PackageReference not found in csproj.");
+                    return;
+                }
+
+                bool needsSave = false;
+
+                // Check for ExcludeAssets="runtime" attribute
+                var excludeAssetsAttr = libHarmonyRef.Attributes?["ExcludeAssets"];
+                if (excludeAssetsAttr == null || excludeAssetsAttr.Value != "runtime")
+                {
+                    if (excludeAssetsAttr == null)
+                        excludeAssetsAttr = xmlDoc.CreateAttribute("ExcludeAssets");
+                    excludeAssetsAttr.Value = "runtime";
+                    libHarmonyRef.Attributes?.SetNamedItem(excludeAssetsAttr);
+                    needsSave = true;
+                    Log("  - Added ExcludeAssets=\"runtime\" to Lib.Harmony PackageReference.");
+                }
+
+                // Check for PrivateAssets child element
+                var privateAssetsNode = libHarmonyRef.SelectSingleNode("PrivateAssets");
+                if (privateAssetsNode == null)
+                {
+                    privateAssetsNode = xmlDoc.CreateElement("PrivateAssets");
+                    privateAssetsNode.InnerText = "all";
+                    libHarmonyRef.AppendChild(privateAssetsNode);
+                    needsSave = true;
+                    Log("  - Added <PrivateAssets>all</PrivateAssets> to Lib.Harmony PackageReference.");
+                }
+                else if (privateAssetsNode.InnerText != "all")
+                {
+                    privateAssetsNode.InnerText = "all";
+                    needsSave = true;
+                    Log("  - Updated PrivateAssets value to 'all'.");
+                }
+
+                if (needsSave)
+                {
+                    using var writer = new XmlTextWriter(csprojPath, new UTF8Encoding(false)) { Formatting = Formatting.Indented };
+                    xmlDoc.Save(writer);
+                    Log("- Lib.Harmony ExcludeAssets settings validated and fixed.");
+                }
+                else
+                {
+                    Log("- Lib.Harmony ExcludeAssets settings already correct.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"- Warning: Failed to validate csproj ExcludeAssets: {ex.Message}");
+            }
         }
 
         private static string BuildPackageId(string prefixRaw, string modName)
