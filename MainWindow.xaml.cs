@@ -359,6 +359,8 @@ namespace PrepareNewMod.Source
                 {
                     foreach (var item in plan)
                         Log($"- Would update: {item.RelativePath}");
+                    LogBlank();
+                    ValidateAndFixCsprojExcludeAssets(existingModRoot, applyChanges: false);
                     return;
                 }
 
@@ -384,7 +386,7 @@ namespace PrepareNewMod.Source
                 }
 
                 // Validate and fix csproj ExcludeAssets settings
-                ValidateAndFixCsprojExcludeAssets(existingModRoot);
+                ValidateAndFixCsprojExcludeAssets(existingModRoot, applyChanges: true);
 
                 LogBlank();
                 Log("DONE.");
@@ -436,7 +438,7 @@ namespace PrepareNewMod.Source
             doc.Save(writer);
         }
 
-        private void ValidateAndFixCsprojExcludeAssets(string modRoot)
+        private void ValidateAndFixCsprojExcludeAssets(string modRoot, bool applyChanges = true)
         {
             try
             {
@@ -507,7 +509,7 @@ namespace PrepareNewMod.Source
                     excludeAssetsAttr.Value = "runtime";
                     libHarmonyRef.Attributes?.SetNamedItem(excludeAssetsAttr);
                     needsSave = true;
-                    Log("  - Added ExcludeAssets=\"runtime\" to Lib.Harmony PackageReference.");
+                    Log("  - Would add ExcludeAssets=\"runtime\" to Lib.Harmony PackageReference.");
                 }
 
                 // Check for PrivateAssets child element
@@ -518,20 +520,27 @@ namespace PrepareNewMod.Source
                     privateAssetsNode.InnerText = "all";
                     libHarmonyRef.AppendChild(privateAssetsNode);
                     needsSave = true;
-                    Log("  - Added <PrivateAssets>all</PrivateAssets> to Lib.Harmony PackageReference.");
+                    Log("  - Would add <PrivateAssets>all</PrivateAssets> to Lib.Harmony PackageReference.");
                 }
                 else if (privateAssetsNode.InnerText != "all")
                 {
                     privateAssetsNode.InnerText = "all";
                     needsSave = true;
-                    Log("  - Updated PrivateAssets value to 'all'.");
+                    Log("  - Would update PrivateAssets value to 'all'.");
                 }
 
                 if (needsSave)
                 {
-                    using var writer = new XmlTextWriter(csprojPath, new UTF8Encoding(false)) { Formatting = Formatting.Indented };
-                    xmlDoc.Save(writer);
-                    Log("- Lib.Harmony ExcludeAssets settings validated and fixed.");
+                    if (applyChanges)
+                    {
+                        using var writer = new XmlTextWriter(csprojPath, new UTF8Encoding(false)) { Formatting = Formatting.Indented };
+                        xmlDoc.Save(writer);
+                        Log("- Lib.Harmony ExcludeAssets settings validated and fixed.");
+                    }
+                    else
+                    {
+                        Log("- Lib.Harmony ExcludeAssets needs to be fixed.");
+                    }
                 }
                 else
                 {
